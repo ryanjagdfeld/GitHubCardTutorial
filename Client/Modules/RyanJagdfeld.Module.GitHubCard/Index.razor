@@ -1,0 +1,116 @@
+@using RyanJagdfeld.Module.GitHubCard.Services
+@using RyanJagdfeld.Module.GitHubCard.Models
+
+@namespace RyanJagdfeld.Module.GitHubCard
+@inherits ModuleBase
+@inject IGitHubCardService GitHubCardService
+@inject IGitHubService GitHubService
+@inject NavigationManager NavigationManager
+@inject IStringLocalizer<Index> Localizer
+
+@if (_GitHubCards == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <ActionLink Action="Add" Security="SecurityAccessLevel.Edit" Text="Add GitHubCard" ResourceKey="Add" />
+    <br />
+    <br />
+    @if (@_GitHubCards.Count != 0)
+    {
+        <Pager Items="@_GitHubCards" Format="Grid" Class="container" RowClass="row" ColumnClass="col-lg-6 px-sm-5">
+            <Row>
+                @if (context.GitHubUser != null)
+                {
+                    <div class="m-sm-3 mw-md-50">
+                        <div class="card p-2 my-2">
+                            <div class="row">
+                                <div class="image col-md-6">
+                                    <img src="@context.GitHubUser.AvatarUrl" class="img-fluid rounded">
+                                </div>
+                                <div class="col-md-6">
+                                    <h3 class="mb-0 mt-0 card-title txt-nowrap">@context.GitHubUser.Name</h3>
+                                    <div class="p-2 mt-2 card-text">
+                                        @context.GitHubUser.Bio
+                                    </div>
+                                    <div class="p-2 mt-2 bg-primary d-flex justify-content-center text-white">
+                                        <div class="px-2 d-flex flex-column">
+                                            <span>Repos</span>
+                                            <span class="text-center">@context.GitHubUser.PublicRepos</span>
+                                        </div>
+                                        <div class="px-2 d-flex flex-column">
+                                            <span>Followers</span>
+                                            <span class="text-center">@context.GitHubUser.Followers</span>
+                                        </div>
+                                    </div>
+                                    <div class="button mt-2 d-flex flex-row align-items-center">
+                                        <a href="@context.GitHubUser.HtmlUrl" class="btn btn-primary w-100 ml-2 stretched-link" target="_blank">Follow</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                <div class="m-auto">
+                    <ActionLink Action="Edit" Parameters="@($"id=" + context.GitHubCardId.ToString())" ResourceKey="Edit"  />
+                    <ActionDialog Header="Delete GitHubCard" Message="Are You Sure You Wish To Delete This GitHubCard?" Action="Delete" Security="SecurityAccessLevel.Edit" Class="btn btn-danger" OnClick="@(async () => await Delete(context))" ResourceKey="Delete"  Id="@context.GitHubCardId.ToString()" />
+                </div>
+            </Row>
+        </Pager>
+    }
+    else
+    {
+        <p>@Localizer["Message.DisplayNone"]</p>
+    }
+}
+
+@code {
+    public override string RenderMode => RenderModes.Static;
+
+    public override List<Resource> Resources => new List<Resource>()
+    {
+        new Resource { ResourceType = ResourceType.Stylesheet, Url = ModulePath() + "Module.css" },
+        new Resource { ResourceType = ResourceType.Script, Url = ModulePath() + "Module.js" }
+    };
+
+    List<GitHubCard> _GitHubCards;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _GitHubCards = await GitHubCardService.GetGitHubCardsAsync(ModuleState.ModuleId);
+            
+            foreach (var gitHubCard in _GitHubCards)
+            {
+                var gitHubUser = await GitHubService.GetGitHubUserAsync(gitHubCard.Username);
+                if (gitHubUser != null)
+                {
+                    gitHubCard.GitHubUser = gitHubUser;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await logger.LogError(ex, "Error Loading GitHubCard {Error}", ex.Message);
+            AddModuleMessage(Localizer["Message.LoadError"], MessageType.Error);
+        }
+    }
+
+    private async Task Delete(GitHubCard GitHubCard)
+    {
+        try
+        {
+            await GitHubCardService.DeleteGitHubCardAsync(GitHubCard.GitHubCardId, ModuleState.ModuleId);
+            await logger.LogInformation("GitHubCard Deleted {GitHubCard}", GitHubCard);
+            _GitHubCards = await GitHubCardService.GetGitHubCardsAsync(ModuleState.ModuleId);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await logger.LogError(ex, "Error Deleting GitHubCard {GitHubCard} {Error}", GitHubCard, ex.Message);
+            AddModuleMessage(Localizer["Message.DeleteError"], MessageType.Error);
+        }
+    }
+}
